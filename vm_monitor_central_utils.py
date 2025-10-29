@@ -10,6 +10,8 @@ VM_ID = 'vm_id'
 START_DATE = 'start_date'
 END_DATE = 'end_date'
 
+PORT_NUMBER = 8088
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def latest_vm_load_update(vm_id: int) -> datetime:

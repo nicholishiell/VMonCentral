@@ -25,17 +25,17 @@ async def check_vm_status(session, ip):
     try:
         # Validate IP address format
         ipaddress.ip_address(ip)
-        async with session.get(f'http://{ip}:8000/check_up', timeout=5) as response:
+        async with session.get(f'http://{ip}:{PORT_NUMBER}/check_up', timeout=5) as response:
             data = await response.json()
-            return ip, data
+            return ip, response.status, data
     except Exception as e:
-        return ip, f'Error: {e}'
+        return ip, -1, f'Error: {e}'
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-async def check_all_vms() -> list[tuple[str, dict | str]]:
+async def check_all_vms() -> list[tuple[str, int, dict | str]]:
 
-    vm_ips = [vm.ip for vm in rcsdb_session.query(VM).all()]
+    vm_ips = [vm.ip for vm in rcsdb_session.query(VM).filter(VM.deleted.is_(None)).all()]
 
     async with aiohttp.ClientSession() as session:
         tasks = [check_vm_status(session, ip) for ip in vm_ips]
@@ -44,13 +44,45 @@ async def check_all_vms() -> list[tuple[str, dict | str]]:
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+def display_checkup_results(results: list[tuple[str, int, dict | str]]):
+
+    total_vms = len(results)
+    n_reachable_vms = sum(1 for _, status, _ in results if status == 200)
+    n_unreachable_vms = total_vms - n_reachable_vms
+    reachable_vm_ips = []
+    unreachable_vm_ips = []
+
+    for ip, status, data in results:
+        print(f'VM IP: {ip}')
+        print(f'Status: {status}')
+        pprint(data)
+        print('-'*80)
+
+        if status == 200:
+            reachable_vm_ips.append(ip)
+        else:
+            unreachable_vm_ips.append(ip)
+
+    print('Summary:')
+    print(f'Total VMs: {total_vms}')
+    print(f'Reachable VMs: {n_reachable_vms}')
+    print(f'Unreachable VMs: {n_unreachable_vms}')
+    print('Reachable VM IPs:')
+    for ip in reachable_vm_ips:
+        print(f' - {ip}')
+
+    print('Unreachable VM IPs:')
+    for ip in unreachable_vm_ips:
+        print(f' - {ip}')
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 async def get_vm_usage_data(session,
                             payload: dict) -> tuple[str, dict]:
 
     try:
         # Validate IP address format
         ipaddress.ip_address(payload[IP_ADDR])
-        request_str = f'http://{payload[IP_ADDR]}:8000/get_usage_data?start={payload[START_DATE]}&end={payload[END_DATE]}'
+        request_str = f'http://{payload[IP_ADDR]}:{PORT_NUMBER}/get_usage_data?start={payload[START_DATE]}&end={payload[END_DATE]}'
 
         logger.info(f'Request URL: {request_str}')
 
@@ -91,7 +123,7 @@ async def purge_old_data(session,
     try:
         # Validate IP address format
         ipaddress.ip_address(ip)
-        async with session.post(f'http://{ip}:8000/purge?days={num_days}', timeout=5) as response:
+        async with session.post(f'http://{ip}:{PORT_NUMBER}/purge?days={num_days}', timeout=5) as response:
             data = await response.json()
             logger.info(f'Purge response from {ip}: {data}')
             return ip, data
@@ -135,8 +167,7 @@ def main():
         pass
     else:
         results = asyncio.run(check_all_vms())
-        results.sort(key=lambda x: x[0])
-        pprint(results)
+        display_checkup_results(results)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
