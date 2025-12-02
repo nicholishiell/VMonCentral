@@ -158,7 +158,7 @@ def main():
         results = asyncio.run(get_all_vm_usage_data())
         add_load_data_to_database(results)
     elif args.gather_one:
-        pass
+        asyncio.run(get_one_vm_usage_data(args.gather_one))
     elif args.purge_all:
         asyncio.run(purge_all_old_data(num_days=args.purge_all))
     elif args.purge_one:
