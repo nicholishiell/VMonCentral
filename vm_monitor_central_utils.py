@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date
+from calendar import monthrange
+from sqlalchemy import func
 
 from rcsdb.connection import rcsdb_session
 from rcsdb.models import VM, VMLoad, GPULoad
@@ -14,42 +16,55 @@ END_DATE = 'end_date'
 
 PORT_NUMBER = 8088
 
+
+def fallback_start_date() -> date:
+    """Return a date two calendar months before today."""
+    today = datetime.now().date()
+    year = today.year
+    month = today.month - 2
+
+    if month <= 0:
+        month += 12
+        year -= 1
+
+    day = min(today.day, monthrange(year, month)[1])
+    return date(year, month, day)
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def latest_vm_load_update(vm_id: int) -> datetime:
+def get_number_of_entries(vm_id: int) -> int:
 
     with rcsdb_session() as sess:
+        count = sess.query(VMLoad).filter(VMLoad.vm_id == vm_id).count()
+    return count
 
-        vm_load_rows = sess.query(VMLoad).filter(VMLoad.vm_id == vm_id).all()
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        latest_date = datetime(2024, 1, 1)
+def latest_vm_load_update(vm_id: int) -> date:
 
-        for row in vm_load_rows:
-            if row.timestamp > latest_date:
-                latest_date = row.timestamp
+    with rcsdb_session() as sess:
+        latest_date = sess.query(func.max(VMLoad.timestamp)).filter(VMLoad.vm_id == vm_id).scalar()
+
+    if latest_date is None:
+        return fallback_start_date()
 
     return latest_date.date()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def latest_gpu_load_update(vm_id: int) -> datetime:
+def latest_gpu_load_update(vm_id: int) -> date:
 
     with rcsdb_session() as sess:
+        latest_date = sess.query(func.max(GPULoad.timestamp)).filter(GPULoad.vm_id == vm_id).scalar()
 
-        gpu_load_rows = sess.query(GPULoad).filter(GPULoad.vm_id == vm_id).all()
-
-        latest_date = datetime(2024, 1, 1)
-
-        for row in gpu_load_rows:
-            if row.timestamp > latest_date:
-                latest_date = row.timestamp
+    if latest_date is None:
+        return fallback_start_date()
 
     return latest_date.date()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def latest_load_update(vm: VM) -> datetime:
-
+def latest_load_update(vm: VM) -> date:
 
     last_vm_date = latest_vm_load_update(vm.id)
     last_gpu_date = latest_gpu_load_update(vm.id)
@@ -63,12 +78,15 @@ def latest_load_update(vm: VM) -> datetime:
 
 def get_usage_payload(vm: VM) -> dict:
 
-    start_data = latest_load_update(vm)
+    print(f'Getting usage payload for VM: {vm.id} with IP: {vm.ip}')
+    print(f'# entries for VM: {get_number_of_entries(vm.id)}')
+    start_date = latest_load_update(vm)
+    print(f'Start date for VM: {start_date}')
     end_date = datetime.now().date()
 
     return {VM_ID: vm.id,
             IP_ADDR: vm.ip,
-            START_DATE: start_data.isoformat(),
+            START_DATE: start_date.isoformat(),
             END_DATE: end_date.isoformat()}
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

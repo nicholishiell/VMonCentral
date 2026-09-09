@@ -85,19 +85,24 @@ async def get_vm_usage_data(session,
     except Exception as e:
         logger.info(f'Error fetching usage data from {payload[IP_ADDR]} : {e}')
         return payload[IP_ADDR], payload[VM_ID], f'Error: {e}'
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 async def get_all_vm_usage_data() -> list[tuple[str, dict]]:
 
     with rcsdb_session() as sess:
+
         usage_payloads = [get_usage_payload(vm) for vm in sess.query(VM).filter(VM.deleted.is_(None)).all()]
 
         async with aiohttp.ClientSession() as session:
+            tasks = []
+            for payload in usage_payloads:
+                tasks.append(get_vm_usage_data(session, payload))
 
-            tasks = [get_vm_usage_data(session, payload) for payload in usage_payloads]
             results = await asyncio.gather(*tasks)
 
             return results
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
