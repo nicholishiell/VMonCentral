@@ -123,16 +123,16 @@ def add_vm_load_to_database(vm_id: int, load_data: dict):
                 continue
             else:
                 mem_dict = datum.get('memory', {})
-                memfree = mem_dict.get('total_mb', 0) - mem_dict.get('used_mb', 0) if mem_dict else 0
+                memused = mem_dict.get('used_mb', 0)
 
                 disk_dict = datum.get('disk', {})
-                diskfree = disk_dict.get('total_mb', 0) - disk_dict.get('used_mb', 0) if disk_dict else 0
+                diskused = disk_dict.get('used_mb', 0)
 
                 vm_load = VMLoad(   vm_id=vm_id,
                                     timestamp=datetime.fromisoformat(datum['timestamp']),
                                     load=calculate_avg_load(datum.get('cpus', [])),
-                                    memfree=memfree,
-                                    diskfree=diskfree)
+                                    memfree=memused,
+                                    diskfree=diskused)
                 sess.add(vm_load)
 
         sess.commit()
