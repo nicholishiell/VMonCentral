@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from calendar import monthrange
 from sqlalchemy import func
 
@@ -16,6 +16,7 @@ END_DATE = 'end_date'
 
 PORT_NUMBER = 8088
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def fallback_start_date() -> date:
     """Return a date two calendar months before today."""
@@ -32,10 +33,12 @@ def fallback_start_date() -> date:
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def get_number_of_entries(vm_id: int) -> int:
+def get_number_of_entries(vm_id: int, start_date: date, end_date: date) -> int:
 
     with rcsdb_session() as sess:
-        count = sess.query(VMLoad).filter(VMLoad.vm_id == vm_id).count()
+        count = sess.query(VMLoad).filter(VMLoad.vm_id == vm_id,
+                                          VMLoad.timestamp >= start_date,
+                                          VMLoad.timestamp <= end_date).count()
     return count
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -78,11 +81,13 @@ def latest_load_update(vm: VM) -> date:
 
 def get_usage_payload(vm: VM) -> dict:
 
-    print(f'Getting usage payload for VM: {vm.id} with IP: {vm.ip}')
-    print(f'# entries for VM: {get_number_of_entries(vm.id)}')
     start_date = latest_load_update(vm)
-    print(f'Start date for VM: {start_date}')
     end_date = datetime.now().date()
+
+    print(f'Getting usage payload for VM: {vm.id} with IP: {vm.ip}')
+    print(f'Start date for VM: {start_date}')
+    print(f'End date for VM: {end_date}')
+    print(f'# entries load entries between dates: {get_number_of_entries(vm.id, start_date, end_date)}')
 
     return {VM_ID: vm.id,
             IP_ADDR: vm.ip,
@@ -112,15 +117,22 @@ def add_vm_load_to_database(vm_id: int, load_data: dict):
                                 .filter(VMLoad.vm_id == vm_id)
                                 .all())
 
-        for datum in load_data.get('data', []):
+        data = load_data.get('data', [])
+        for datum in data:
             if datetime.fromisoformat(datum['timestamp']) in existing_timestamps:
                 continue
             else:
+                mem_dict = datum.get('memory', {})
+                memfree = mem_dict.get('total_mb', 0) - mem_dict.get('used_mb', 0) if mem_dict else 0
+
+                disk_dict = datum.get('disk', {})
+                diskfree = disk_dict.get('total_mb', 0) - disk_dict.get('used_mb', 0) if disk_dict else 0
+
                 vm_load = VMLoad(   vm_id=vm_id,
                                     timestamp=datetime.fromisoformat(datum['timestamp']),
                                     load=calculate_avg_load(datum.get('cpus', [])),
-                                    memfree=datum.get('memory', {}).get('used_mb', 0),
-                                    diskfree=datum.get('disk', {}).get('used_mb', 0))
+                                    memfree=memfree,
+                                    diskfree=diskfree)
                 sess.add(vm_load)
 
         sess.commit()
@@ -155,9 +167,14 @@ def add_load_data_to_database(results : list[tuple[str, str, dict]]):
         if type(data) is dict:
             try:
                 add_vm_load_to_database(int(vm_id), data)
+            except Exception as e:
+                print(f"Error adding CPU load data for VM ID {vm_id}: {e}")
+
+            try:
                 add_gpu_load_to_database(int(vm_id), data)
             except Exception as e:
-                print(f"Error adding load data for VM ID {vm_id}: {e}")
+                print(f"Error adding GPU load data for VM ID {vm_id}: {e}")
+
         else:
             print(f"Error retrieving data for VM ID {vm_id}: {data}")
 
@@ -209,7 +226,6 @@ def display_checkup_results(results: list[tuple[str, int, dict | str]]):
     for ip, status, data in results:
         print(f'VM IP: {ip}')
         print(f'Status: {status}')
-        pprint(data)
         print('-'*80)
 
         if status == 200:

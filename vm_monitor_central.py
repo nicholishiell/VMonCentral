@@ -8,6 +8,8 @@ import argparse
 from vm_monitor_central_utils import *
 import requests
 
+TIMEOUT = 30  # seconds
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 logging.basicConfig(
@@ -26,7 +28,7 @@ async def check_vm_status(session, ip):
     try:
         # Validate IP address format
         ipaddress.ip_address(ip)
-        async with session.get(f'http://{ip}:{PORT_NUMBER}/check_up', timeout=5) as response:
+        async with session.get(f'http://{ip}:{PORT_NUMBER}/check_up', timeout=TIMEOUT) as response:
             data = await response.json()
             return ip, response.status, data
     except Exception as e:
@@ -53,7 +55,7 @@ def check_one_vm(ip: str) -> tuple[str, int, dict | str]:
 
         logger.info(f'Request URL: {request_str}')
 
-        response = requests.get(request_str, timeout=5, proxies={'http': None, 'https': None})
+        response = requests.get(request_str, timeout=TIMEOUT, proxies={'http': None, 'https': None})
         status_code = response.status_code
         data = response.json()
         logger.info(f'Usage data from {ip} (Status: {status_code})')
@@ -76,7 +78,7 @@ async def get_vm_usage_data(session,
 
         logger.info(f'Request URL: {request_str}')
 
-        async with session.get(request_str, timeout=5) as response:
+        async with session.get(request_str, timeout=TIMEOUT) as response:
             status_code = response.status
             data = await response.json()
             logger.info(f'Usage data from {payload[IP_ADDR]} (Status: {status_code})')
@@ -124,10 +126,11 @@ def get_one_vm_usage_data(ip: str):
 
             logger.info(f'Request URL: {request_str}')
 
-            response = requests.get(request_str, timeout=5,proxies={'http': None, 'https': None})
+            response = requests.get(request_str, timeout=TIMEOUT,proxies={'http': None, 'https': None})
             status_code = response.status_code
             data = response.json()
             logger.info(f'Usage data from {payload[IP_ADDR]} (Status: {status_code})')
+
             return payload[IP_ADDR], payload[VM_ID], data
 
         except Exception as e:
@@ -143,7 +146,7 @@ async def purge_old_data(session,
     try:
         # Validate IP address format
         ipaddress.ip_address(ip)
-        async with session.post(f'http://{ip}:{PORT_NUMBER}/purge?days={num_days}', timeout=5) as response:
+        async with session.post(f'http://{ip}:{PORT_NUMBER}/purge?days={num_days}', timeout=TIMEOUT) as response:
             data = await response.json()
             logger.info(f'Purge response from {ip}: {data}')
             return ip, data
