@@ -118,14 +118,21 @@ def add_vm_load_to_database(vm_id: int, load_data: dict):
                                 .all())
 
         data = load_data.get('data', [])
-        for datum in data:
+        for idx, datum in enumerate(data):
+
             if datetime.fromisoformat(datum['timestamp']) in existing_timestamps:
                 continue
             else:
                 mem_dict = datum.get('memory', {})
-                memused = mem_dict.get('used_mb', 0)
-
+                if mem_dict is None:
+                    print(f"Skipping VM load entry for VM ID {vm_id} at timestamp {datum.get('timestamp')}: memory data is None")
+                    continue
                 disk_dict = datum.get('disk', {})
+                if disk_dict is None:
+                    print(f"Skipping VM load entry for VM ID {vm_id} at timestamp {datum.get('timestamp')}: disk data is None")
+                    continue
+
+                memused = mem_dict.get('used_mb', 0)
                 diskused = disk_dict.get('used_mb', 0)
 
                 vm_load = VMLoad(   vm_id=vm_id,
